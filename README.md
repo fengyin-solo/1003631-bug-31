@@ -13,7 +13,9 @@
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端（唯一运行单元）
 │   ├── src/views/            每个业务模块一个页面
+│   ├── src/components/       跨模块共享组件（如物资预警清单）
 │   ├── src/api/local-service.ts   本地数据服务：列表、筛选、动作流转、导出
+│   ├── src/domain/           领域服务：检查站状态机、通行明细聚合、换岗、物资预警派生
 │   ├── src/data/             模块元数据 / 示例数据 / localStorage 持久化
 │   ├── src/stores/           会话与筛选状态
 │   └── vite.config.ts        dev server 配置（open: false，无 /api 代理）
@@ -68,4 +70,16 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 防火检查站与物资储备的联动收口在 `src/domain/checkpoint.ts`：
+  - 站点状态机：`正常检查/升级检查 →（安排换岗）→ 等待换岗 →（完成换岗）→ 按现场级别恢复`。
+    冲突时以现场检查为准——升级检查的站点不会因换岗被降回正常检查，待换岗期间锁定其余动作。
+  - 通行车辆数、收缴火种数以 `checkpoint_passage` 明细为唯一事实源，站点行只展示聚合值；
+    明细唯一键为「站点 + 检查时间 + 班次」，重复登记覆盖不累加。历史换岗记录（`checkpoint_relief`）
+    只追加不改写，保留原检查时间与原班次。
+  - 物资状态由「实际储备量 vs 预警储备量」派生（≤阈值 50% 需补充、≤阈值 偏低、过期优先），
+    检查站页与物资页共用 `components/SupplyWarnings.vue` 同一份预警清单。
+  - 换岗完成带 `version` 乐观锁，并发只接受一个结果；站点、换岗记录、物资清点通过
+    `commitKeys` 在同一份快照上修改，全部成功才一次落 localStorage，失败整单退回。
+  - 补值口径：计数空值/非数字/负数补 0；检查时间缺失补当前时刻，只给日期补当前时分，
+    班次按 08:00–20:00 归白班、其余夜班；阈值非法视为不预警，实际储量缺失按 0（保守触发）。
 - 想回到初始数据：清掉浏览器里 `forest-fire-patrol:entries` 这一项，或调用 `resetModule(模块)`。

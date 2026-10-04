@@ -1,5 +1,13 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  CHECKPOINT_KEY,
+  SUPPLY_KEY,
+  listStations,
+  listSupplyWarnings,
+  runSiteAction,
+  runSupplyAction,
+} from '@/domain/checkpoint'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -24,11 +32,43 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
 }
 
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
+  // 检查站与物资有领域读模型：站点列表带明细聚合、物资列表带派生状态，
+  // 保证列表、通行详情、预警清单看到的是同一份口径。
+  if (key === CHECKPOINT_KEY) {
+    const matched = filterRows(listStations() as EntryRow[], filters)
+    return { items: matched, total: matched.length, page: 1, size: matched.length }
+  }
+  if (key === SUPPLY_KEY) {
+    const warnings = listSupplyWarnings()
+    // 预警读模型字段是重命名后的，回填到行结构供通用表格展示。
+    const rows = listRows(key).map((row) => {
+      const warning = warnings.find((item) => item.id === Number(row.id))
+      return warning
+        ? {
+            ...row,
+            status: warning.status,
+            预警储备量: warning.预警储备量,
+            实际储备量: warning.实际储备量,
+            补充中: warning.补充中,
+            物资状态: warning.status,
+          }
+        : row
+    })
+    const matched = filterRows(rows, filters)
+    return { items: matched, total: matched.length, page: 1, size: matched.length }
+  }
   const matched = filterRows(listRows(key), filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
+  // 检查站与物资的状态冲突由领域状态机裁决，通用动作流不再直接覆盖这两类行。
+  if (key === CHECKPOINT_KEY) {
+    return runSiteAction(id, action)
+  }
+  if (key === SUPPLY_KEY) {
+    return runSupplyAction(id, action)
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
