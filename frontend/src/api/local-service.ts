@@ -1,9 +1,14 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { replaceSupply, resetSupply } from '@/domain/checkpoint'
+import { SEED_ROWS } from '@/data/seed'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+// 检查站有自己的带守卫状态机（现场检查为权威源），通用盲写一律拒绝，避免旧站点被直接改状态。
+const DOMAIN_OWNED = new Set(['checkpoint'])
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -30,6 +35,12 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 
 export function runAction(key: string, id: number, action: string): ActionResult {
   const meta = moduleMeta(key)
+  if (DOMAIN_OWNED.has(key)) {
+    return {
+      ok: false,
+      message: `防火检查站动作请走现场检查流程（升级/换岗均按站点状态守卫），不允许直接改状态`,
+    }
+  }
   const target = meta.actionTargets[action]
   if (!target) {
     return { ok: false, message: `${meta.entity}没有登记「${action}」这个动作` }
@@ -52,12 +63,22 @@ export function runAction(key: string, id: number, action: string): ActionResult
   }
   const next = [...rows]
   next[index] = updated
-  saveRows(key, next)
+  // 物资行与预警投影同一事务落库，另一个模块读到的清单同步更新。
+  if (key === 'supply') {
+    replaceSupply(next)
+  } else {
+    saveRows(key, next)
+  }
   return { ok: true, message: `${meta.entity}已${action}，当前状态「${target}」` }
 }
 
 export function resetModule(key: string): PageResult {
-  resetRows(key)
+  if (key === 'supply') {
+    // 物资回到种子后预警按种子即时重算，同事务落库，不残留重置前的旧值。
+    resetSupply((SEED_ROWS.supply ?? []) as EntryRow[])
+  } else {
+    resetRows(key)
+  }
   return listEntries(key)
 }
 

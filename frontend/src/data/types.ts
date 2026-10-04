@@ -5,8 +5,24 @@ export type EntryRow = {
   status: string
   pending: boolean
   abnormal: boolean
-  [field: string]: string | number | boolean
+  /** 乐观锁版本：检查站领域动作按版本仲裁并发提交。 */
+  version?: number
+  [field: string]: string | number | boolean | undefined
 }
+
+/** 领域集合里的一条记录（现场检查 / 班次 / 预警投影）。 */
+export type DomainRow = {
+  id: number
+  [field: string]: string | number | boolean | undefined
+}
+
+/** 检查站领域全部集合的集合名。 */
+export type CollectionKey =
+  | 'checkpointInspection'
+  | 'checkpointShift'
+  | 'supplyWarning'
+
+export type DomainDraft = Record<string, DomainRow[]>
 
 export type ModuleMeta = {
   key: string

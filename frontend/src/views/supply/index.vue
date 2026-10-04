@@ -67,6 +67,30 @@
       <span>共 {{ total }} 条物资储备记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <h3 class="section-title">物资预警清单（检查站模块同一份投影，同步更新不残留旧值）</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>物资编号</th><th>物资名称</th><th>储备林场</th>
+          <th>预警储备量</th><th>实际储备量</th><th>预警级别</th><th>升级站点关注</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in warnings" :key="String(item.id)" :class="{ 'row-warn': item.关注 }">
+          <td>{{ item.物资编号 }}</td>
+          <td>{{ item.物资名称 }}</td>
+          <td>{{ item.储备林场 }}</td>
+          <td>{{ item.预警储备量 }}</td>
+          <td>{{ item.实际储备量 }}</td>
+          <td>{{ item.级别 }}</td>
+          <td>{{ item.关注 ? '★ 关注' : '—' }}</td>
+        </tr>
+        <tr v-if="!warnings.length">
+          <td colspan="7" class="empty-state">暂无预警数据</td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 </template>
 
@@ -79,6 +103,7 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { listSupplyWarnings, type WarningRow } from '@/domain/checkpoint'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('supply')
@@ -89,6 +114,7 @@ const stats = [{"label": "物资种类", "value": 0}, {"label": "需补充种类
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
+const warnings = ref<WarningRow[]>([])
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
@@ -128,6 +154,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    warnings.value = listSupplyWarnings()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '物资储备列表读取失败'
   }
@@ -135,3 +162,13 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.section-title {
+  margin: 22px 0 8px;
+  font-size: 15px;
+}
+.row-warn {
+  background: #fff7ed;
+}
+</style>
